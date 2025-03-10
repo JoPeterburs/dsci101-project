@@ -1,0 +1,423 @@
+---
+title: "DSCI 101 Project"
+author: "Josie Peterburs"
+date: "2023-03-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(mdsr)
+library(lubridate)
+
+# team id and things
+MTeams <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/MTeams.csv")
+WTeams <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/WTeams.csv")
+
+# regular season
+MRegularSeasonDetailedResults <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/MRegularSeasonDetailedResults.csv")
+WRegularSeasonDetailedResults <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/WRegularSeasonDetailedResults.csv")
+
+# tourney background
+MNCAATourneySeeds <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/MNCAATourneySeeds.csv")
+WNCAATourneySeeds <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/WNCAATourneySeeds.csv")
+
+# regions
+MSeasons <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/MSeasons.csv")
+WSeasons <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/WSeasons.csv")
+
+# tournament results
+MNCAATourneyDetailedResults <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/MNCAATourneyDetailedResults.csv")
+WNCAATourneyDetailedResults <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/WNCAATourneyDetailedResults.csv")
+
+# other
+conferences <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/Conferences.csv")
+MTeamConferences <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/MTeamConferences.csv")
+WTeamConferences <- read.csv("C:/Users/gigip/Downloads/march-machine-learning-mania-2023/WTeamConferences.csv")
+```
+
+## Q1: What team has the most average wins per season for their time as a D1 team since 2003? (Do men and women separately)
+Men: Gonzaga with 26.8 wins.
+```{r}
+# detailed regular season results start in 2003 so find d1 years since 2003
+m_time_as_d1 <- MTeams %>% filter(LastD1Season >= 2003) %>% mutate(d1years_since2003 = ifelse(FirstD1Season < 2003, 21, LastD1Season - FirstD1Season + 1))  
+  
+# find total number of wins for each team per season. detailed results begin in 2003, so there are at most 21 seasons per team.
+m_num_wins_per_season <- MRegularSeasonDetailedResults %>% group_by(Season, WTeamID) %>% summarize(numwins = n())
+
+# join tables by TeamID and get average wins (total wins over the years divided by number of years)
+m_wins_and_d1_seasons <- m_num_wins_per_season %>% 
+  inner_join(m_time_as_d1, by = c("WTeamID" = "TeamID")) %>% select(Season, numwins, TeamName, d1years_since2003) %>% group_by(TeamName) %>% summarize(avg_win_per_season = sum(numwins) / d1years_since2003) %>%  arrange(-avg_win_per_season) %>% unique()
+
+m_wins_and_d1_seasons %>% head(10)
+```
+Women: Connecticut with 30.1 wins
+```{r}
+# don't have d1 years for women, so will have to assume all teams have been D1 since 2010 (when the regular season data begins). we want best time averaged over the years, so this hopefully will not affect the major teams
+w_time_as_d1 = WTeams %>% mutate(d1years = 2023 - 2010 + 1) 
+
+w_num_wins_per_season <- WRegularSeasonDetailedResults %>% group_by(Season, WTeamID) %>% summarize(numwins = n())
+
+w_wins_and_d1_seasons <- w_num_wins_per_season %>% 
+  inner_join(w_time_as_d1, by = c("WTeamID" = "TeamID")) %>% select(Season, numwins, TeamName, d1years) %>% group_by(TeamName) %>% summarize(avg_win_per_season = sum(numwins) / d1years) %>%  arrange(-avg_win_per_season) %>% unique()
+
+# Connecticut is the top team, which makes sense because of their super long win-streak even if some of the teams were not D1 for all 14 seasons.
+w_wins_and_d1_seasons %>% head(10)
+```
+
+
+## Q2: My dad always says that free throws win games. Does the team that makes more free throws (by number and by %) in an individual game typically win? In other words, what is the probability that a team wins an individual game given that they made more free throws (count and percentage)?
+Men: Count - 0.6768. Percentage - 0.5761.
+```{r}
+# by number of free throws
+m_count_ft <- MRegularSeasonDetailedResults %>% select(Season, WFTM, LFTM) %>% na.omit() %>% mutate(m_team_with_more_ft = ifelse(WFTM > LFTM, 1, 0)) 
+m_count_ft %>% summarize(prob = mean(m_team_with_more_ft))
+
+# by percentage of free throws made
+m_prct_ft <- MRegularSeasonDetailedResults %>% select(Season, WFTM, WFTA, LFTM, LFTA) %>% na.omit() %>% mutate(m_wteam_prct = WFTM / WFTA, m_lteam_prct = LFTM / LFTA, m_higher_ft_prct = ifelse(m_wteam_prct > m_lteam_prct, 1, 0)) 
+m_prct_ft %>% summarize(prob = mean(m_higher_ft_prct, na.rm = TRUE))
+```
+Women: Count - 0.6623. Percentage - 0.5660.
+```{r}
+# by number of free throws
+w_count_ft <- WRegularSeasonDetailedResults %>% select(Season, WFTM, LFTM) %>% na.omit() %>% mutate(w_team_with_more_ft = ifelse(WFTM > LFTM, 1, 0)) 
+w_count_ft %>% summarize(prob = mean(w_team_with_more_ft))
+
+# by percentage of free throws made
+w_prct_ft <- WRegularSeasonDetailedResults %>% select(Season, WFTM, WFTA, LFTM, LFTA) %>% na.omit() %>% mutate(w_wteam_prct = WFTM / WFTA, w_lteam_prct = LFTM / LFTA, w_higher_ft_prct = ifelse(w_wteam_prct > w_lteam_prct, 1, 0)) 
+w_prct_ft %>% summarize(prob = mean(w_higher_ft_prct, na.rm = TRUE))
+```
+
+
+## Q2.5: Plot FT percentage and winning percentage on a scatter plot. Facet by year and color-code if the team made the March Madness tournament. 
+Men:
+```{r}
+# win percentage
+m_win <- MRegularSeasonDetailedResults %>% group_by(Season, WTeamID) %>% summarize(totalwins = n())
+m_loss <- MRegularSeasonDetailedResults %>% group_by(Season, LTeamID) %>% summarize(totalloss = n())
+
+m_combined_games <- m_win %>% left_join(m_loss, by = c("WTeamID" = "LTeamID", "Season" = "Season")) %>% mutate(totalgames = totalwins + totalloss, win_prct = totalwins / totalgames) %>% na.omit() %>% select(Season, WTeamID, win_prct)
+m_combined_games %>% head()
+
+# freethrows
+m_winningteamFT <- MRegularSeasonDetailedResults %>% group_by(Season, WTeamID) %>% summarize(WtotalFTM = sum(WFTM), WtotalFTA = sum(WFTA))
+
+m_losingteamFT <- MRegularSeasonDetailedResults %>% group_by(Season, LTeamID) %>% summarize(LtotalFTM = sum(LFTM), LtotalFTA = sum(LFTA))
+
+m_totalFT <- m_winningteamFT %>% left_join(m_losingteamFT, by = c("WTeamID" = "LTeamID", "Season" = "Season")) %>% na.omit() %>% mutate(totalFTM = WtotalFTM + LtotalFTM, totalFTA = WtotalFTA + LtotalFTA, ft_prct = totalFTM / totalFTA) %>% select(Season, WTeamID, totalFTM, totalFTA, ft_prct) %>% select(Season, WTeamID, ft_prct)
+m_totalFT %>% head()
+
+# did the team make the ncaa tournament
+m_tourney_teams <- MNCAATourneySeeds %>% filter(Season >= '2003') %>% mutate(made_tourney = "yes")
+
+# combine
+m_ft_and_wins <- m_combined_games %>% left_join(m_totalFT, by = c("WTeamID" = "WTeamID", "Season" = "Season")) %>% left_join(m_tourney_teams, by = c("Season" = "Season", "WTeamID" = "TeamID")) %>% select(Season, WTeamID, win_prct, ft_prct, made_tourney) 
+m_ft_and_wins %>% head()
+
+m_ft_and_wins[is.na(m_ft_and_wins)] <- "no"
+
+m_ft_and_wins %>% ggplot(aes(x = ft_prct, y = win_prct, color = fct_relevel(made_tourney, "yes"))) + geom_point() + xlab("FT %") + ylab("Win %") + labs(color = "Made Tournament?") + facet_wrap(~ Season)
+
+# look at one specific year
+m_ft_and_wins %>% filter(Season == '2022') %>% ggplot(aes(x = ft_prct, y = win_prct, color = fct_relevel(made_tourney, "yes"))) + geom_point() + geom_smooth() + xlab("FT %") + ylab("Win %") + labs(color = "Made 2022 Tournament?")
+```
+Women:
+```{r}
+# win percentage
+w_win <- WRegularSeasonDetailedResults %>% group_by(Season, WTeamID) %>% summarize(totalwins = n())
+w_loss <- WRegularSeasonDetailedResults %>% group_by(Season, LTeamID) %>% summarize(totalloss = n())
+
+w_combined_games <- w_win %>% left_join(w_loss, by = c("WTeamID" = "LTeamID", "Season" = "Season")) %>% mutate(totalgames = totalwins + totalloss, win_prct = totalwins / totalgames) %>% na.omit() %>% select(Season, WTeamID, win_prct)
+w_combined_games %>% head()
+
+# freethrows
+w_winningteamFT <- WRegularSeasonDetailedResults %>% group_by(Season, WTeamID) %>% summarize(WtotalFTM = sum(WFTM), WtotalFTA = sum(WFTA))
+
+w_losingteamFT <- WRegularSeasonDetailedResults %>% group_by(Season, LTeamID) %>% summarize(LtotalFTM = sum(LFTM), LtotalFTA = sum(LFTA))
+
+w_totalFT <- w_winningteamFT %>% left_join(w_losingteamFT, by = c("WTeamID" = "LTeamID", "Season" = "Season")) %>% na.omit() %>% mutate(totalFTM = WtotalFTM + LtotalFTM, totalFTA = WtotalFTA + LtotalFTA, ft_prct = totalFTM / totalFTA) %>% select(Season, WTeamID, totalFTM, totalFTA, ft_prct) %>% select(Season, WTeamID, ft_prct)
+w_totalFT %>% head()
+
+# did the team make the ncaa tournament
+w_tourney_teams <- WNCAATourneySeeds %>% filter(Season >= '2010') %>% mutate(made_tourney = "yes")
+
+# combine
+w_ft_and_wins <- w_combined_games %>% left_join(w_totalFT, by = c("WTeamID" = "WTeamID", "Season" = "Season")) %>% left_join(w_tourney_teams, by = c("Season" = "Season", "WTeamID" = "TeamID")) %>% select(Season, WTeamID, win_prct, ft_prct, made_tourney) 
+w_ft_and_wins %>% head()
+
+w_ft_and_wins[is.na(w_ft_and_wins)] <- "no"
+
+w_ft_and_wins %>% ggplot(aes(x = ft_prct, y = win_prct, color = fct_relevel(made_tourney, "yes"))) + geom_point() + xlab("FT %") + ylab("Win %") + labs(color = "Made Tournament?") + facet_wrap(~ Season)
+
+# look at one specific year
+w_ft_and_wins %>% filter(Season == '2022') %>% ggplot(aes(x = ft_prct, y = win_prct, color = fct_relevel(made_tourney, "yes"))) + geom_point() + geom_smooth() + xlab("FT %") + ylab("Win %") + labs(color = "Made 2022 Tournament?")
+```
+
+
+## Q3: Was there a difference in score, fouls, assists, and three point shooting percentage by conference in the 21-22 season? Plot each element on sied-by-side boxplots to compare conferences.
+(Top conferences from WarrenNolan.com; 2022 season for men and women)
+
+ - Men: West Coast, Atlantic 10, Mountain West, American Athletic, Pac-12, ACC, Big East, SEC, Big Ten, Big 12
+ 
+ - Women: Missouri Valley, Atlantic 10, Big East, West Coast, American Athletic, Big Ten, ACC, Big 12, Pac-12, SEC 
+
+Men (Top 10 Conferences):
+```{r}
+m_topconf <- c("West Coast Conference", "Atlantic 10 Conference", "Mountain West Conference", "American Athletic Conference", "Pacific-12 Conference", "Atlantic Coast Conference", "Big East Conference", "Southeastern Conference", "Big Ten Conference", "Big 12 Conference")
+
+m_conferences10 <- conferences %>% filter(Description %in% m_topconf)
+m_confabbrevs <- m_conferences10 %>% select(ConfAbbrev)
+m_confabbrevs2 <- c("a_ten", "aac", "acc", "big_east", "big_ten", "big_twelve", "mwc", "pac_twelve", "sec", "wcc")
+
+m_teams <- MTeamConferences %>% filter(ConfAbbrev %in% m_confabbrevs2, Season == "2022") %>% select(TeamID, ConfAbbrev)
+
+m_win_gamedetails <- MRegularSeasonDetailedResults %>% filter(Season == "2022") %>% select(WTeamID, WScore, WPF, WAst, WFGM3, WFGA3) %>% inner_join(m_teams, by = c("WTeamID" = "TeamID")) %>% left_join(m_conferences10, by = c("ConfAbbrev" = "ConfAbbrev")) %>% 
+        rename("TeamID" = "WTeamID",
+               "Score" = "WScore",
+               "Fouls" = "WPF",
+               "Assists" = "WAst",
+               "FGM3" = "WFGM3",
+               "FGA3" = "WFGA3")
+
+m_lose_gamedetails <- MRegularSeasonDetailedResults %>% filter(Season == "2022") %>% select(LTeamID, LScore, LPF, LAst, LFGM3, LFGA3) %>% inner_join(m_teams, by = c("LTeamID" = "TeamID")) %>% left_join(m_conferences10, by = c("ConfAbbrev" = "ConfAbbrev")) %>% 
+        rename("TeamID" = "LTeamID",
+               "Score" = "LScore",
+               "Fouls" = "LPF",
+               "Assists" = "LAst",
+               "FGM3" = "LFGM3",
+               "FGA3" = "LFGA3")
+
+m_all_gamedetails <- rbind(m_win_gamedetails, m_lose_gamedetails) %>% mutate(Three_Point_Prct = FGM3 / FGA3)
+
+# Score
+m_all_gamedetails %>% ggplot(aes(x = Description, y = Score)) + geom_boxplot() + coord_flip()
+
+# Fouls
+m_all_gamedetails %>% ggplot(aes(x = Description, y = Fouls)) + geom_boxplot() + coord_flip()
+
+# Assists
+m_all_gamedetails %>% ggplot(aes(x = Description, y = Assists)) + geom_boxplot() + coord_flip()
+
+# 3-Point Shooting % 
+m_all_gamedetails %>% ggplot(aes(x = Description, y = Three_Point_Prct)) + geom_boxplot() + coord_flip()
+
+# overall averages
+m_category_avgs <- m_all_gamedetails %>% group_by(Description) %>% summarize(score = mean(Score), fouls = mean(Fouls), assists = mean(Assists), threept = mean(FGM3 / FGA3))
+m_category_avgs
+```
+Women (Top Ten Conferences):
+```{r}
+w_topconf <- c("Missouri Valley Conference", "Atlantic 10 Conference", "Big East Conference", "West Coast Conference", "American Athletic Conference", "Big Ten Conference", "Atlantic Coast Conference", "Big 12 Conference", "Pacific-12 Conference", "Southeastern Conference")
+
+w_conferences10 <- conferences %>% filter(Description %in% w_topconf)
+w_confabbrevs <- w_conferences10 %>% select(ConfAbbrev)
+w_confabbrevs2 <- c("a_ten", "aac", "acc", "big_east", "big_ten", "big_twelve", "mvc", "pac_twelve", "sec", "wcc")
+
+w_teams <- WTeamConferences %>% filter(ConfAbbrev %in% w_confabbrevs2, Season == "2022") %>% select(TeamID, ConfAbbrev)
+
+w_win_gamedetails <- WRegularSeasonDetailedResults %>% filter(Season == "2022") %>% select(WTeamID, WScore, WPF, WAst, WFGM3, WFGA3) %>% inner_join(w_teams, by = c("WTeamID" = "TeamID")) %>% left_join(w_conferences10, by = c("ConfAbbrev" = "ConfAbbrev")) %>% 
+        rename("TeamID" = "WTeamID",
+               "Score" = "WScore",
+               "Fouls" = "WPF",
+               "Assists" = "WAst",
+               "FGM3" = "WFGM3",
+               "FGA3" = "WFGA3")
+
+w_lose_gamedetails <- WRegularSeasonDetailedResults %>% filter(Season == "2022") %>% select(LTeamID, LScore, LPF, LAst, LFGM3, LFGA3) %>% inner_join(w_teams, by = c("LTeamID" = "TeamID")) %>% left_join(w_conferences10, by = c("ConfAbbrev" = "ConfAbbrev")) %>% 
+        rename("TeamID" = "LTeamID",
+               "Score" = "LScore",
+               "Fouls" = "LPF",
+               "Assists" = "LAst",
+               "FGM3" = "LFGM3",
+               "FGA3" = "LFGA3")
+
+w_all_gamedetails <- rbind(w_win_gamedetails, w_lose_gamedetails) %>% mutate(Three_Point_Prct = FGM3 / FGA3)
+
+# Score
+w_all_gamedetails %>% ggplot(aes(x = Description, y = Score)) + geom_boxplot() + coord_flip()
+
+# Fouls
+w_all_gamedetails %>% ggplot(aes(x = Description, y = Fouls)) + geom_boxplot() + coord_flip()
+
+# Assists
+w_all_gamedetails %>% ggplot(aes(x = Description, y = Assists)) + geom_boxplot() + coord_flip()
+
+# 3-Point Shooting % 
+w_all_gamedetails %>% ggplot(aes(x = Description, y = Three_Point_Prct)) + geom_boxplot() + coord_flip()
+
+# overall averages
+w_category_avgs <- w_all_gamedetails %>% group_by(Description) %>% summarize(score = mean(Score), fouls = mean(Fouls), assists = mean(Assists), threept = mean(FGM3 / FGA3))
+w_category_avgs
+```
+
+Men (all conferences):
+```{r}
+m_teamsALL <- MTeamConferences %>% filter(Season == "2022") %>% select(TeamID, ConfAbbrev)
+
+m_win_gamedetailsALL <- MRegularSeasonDetailedResults %>% filter(Season == "2022") %>% select(WTeamID, WScore, WPF, WAst, WFGM3, WFGA3) %>% inner_join(m_teamsALL, by = c("WTeamID" = "TeamID")) %>% left_join(conferences, by = c("ConfAbbrev" = "ConfAbbrev")) %>% 
+        rename("TeamID" = "WTeamID",
+               "Score" = "WScore",
+               "Fouls" = "WPF",
+               "Assists" = "WAst",
+               "FGM3" = "WFGM3",
+               "FGA3" = "WFGA3")
+
+m_lose_gamedetailsALL <- MRegularSeasonDetailedResults %>% filter(Season == "2022") %>% select(LTeamID, LScore, LPF, LAst, LFGM3, LFGA3) %>% inner_join(m_teamsALL, by = c("LTeamID" = "TeamID")) %>% left_join(conferences, by = c("ConfAbbrev" = "ConfAbbrev")) %>% 
+        rename("TeamID" = "LTeamID",
+               "Score" = "LScore",
+               "Fouls" = "LPF",
+               "Assists" = "LAst",
+               "FGM3" = "LFGM3",
+               "FGA3" = "LFGA3")
+
+m_all_gamedetailsALL <- rbind(m_win_gamedetailsALL, m_lose_gamedetailsALL) %>% mutate(Three_Point_Prct = FGM3 / FGA3)
+
+# Score
+m_all_gamedetailsALL %>% ggplot(aes(x = Description, y = Score)) + geom_boxplot() + coord_flip()
+
+# Fouls
+m_all_gamedetailsALL %>% ggplot(aes(x = Description, y = Fouls)) + geom_boxplot() + coord_flip()
+
+# Assists
+m_all_gamedetailsALL %>% ggplot(aes(x = Description, y = Assists)) + geom_boxplot() + coord_flip()
+
+# 3-Point Shooting % 
+m_all_gamedetailsALL %>% ggplot(aes(x = Description, y = Three_Point_Prct)) + geom_boxplot() + coord_flip()
+
+# overall averages
+m_category_avgsALL <- m_all_gamedetailsALL %>% group_by(Description) %>% summarize(score = mean(Score), fouls = mean(Fouls), assists = mean(Assists), threept = mean(FGM3 / FGA3))
+m_category_avgsALL
+```
+Women (all conferences):
+```{r}
+w_teamsALL <- WTeamConferences %>% filter(Season == "2022") %>% select(TeamID, ConfAbbrev)
+
+w_win_gamedetailsALL <- WRegularSeasonDetailedResults %>% filter(Season == "2022") %>% select(WTeamID, WScore, WPF, WAst, WFGM3, WFGA3) %>% inner_join(w_teamsALL, by = c("WTeamID" = "TeamID")) %>% left_join(conferences, by = c("ConfAbbrev" = "ConfAbbrev")) %>% 
+        rename("TeamID" = "WTeamID",
+               "Score" = "WScore",
+               "Fouls" = "WPF",
+               "Assists" = "WAst",
+               "FGM3" = "WFGM3",
+               "FGA3" = "WFGA3")
+
+w_lose_gamedetailsALL <- WRegularSeasonDetailedResults %>% filter(Season == "2022") %>% select(LTeamID, LScore, LPF, LAst, LFGM3, LFGA3) %>% inner_join(w_teamsALL, by = c("LTeamID" = "TeamID")) %>% left_join(conferences, by = c("ConfAbbrev" = "ConfAbbrev")) %>% 
+        rename("TeamID" = "LTeamID",
+               "Score" = "LScore",
+               "Fouls" = "LPF",
+               "Assists" = "LAst",
+               "FGM3" = "LFGM3",
+               "FGA3" = "LFGA3")
+
+w_all_gamedetailsALL <- rbind(w_win_gamedetailsALL, w_lose_gamedetailsALL) %>% mutate(Three_Point_Prct = FGM3 / FGA3)
+
+# Score
+w_all_gamedetailsALL %>% ggplot(aes(x = Description, y = Score)) + geom_boxplot() + coord_flip()
+
+# Fouls
+w_all_gamedetailsALL %>% ggplot(aes(x = Description, y = Fouls)) + geom_boxplot() + coord_flip()
+
+# Assists
+w_all_gamedetailsALL %>% ggplot(aes(x = Description, y = Assists)) + geom_boxplot() + coord_flip()
+
+# 3-Point Shooting % 
+w_all_gamedetailsALL %>% ggplot(aes(x = Description, y = Three_Point_Prct)) + geom_boxplot() + coord_flip()
+
+# overall averages
+w_category_avgsALL <- w_all_gamedetailsALL %>% group_by(Description) %>% summarize(score = mean(Score), fouls = mean(Fouls), assists = mean(Assists), threept = mean(FGM3 / FGA3))
+w_category_avgsALL
+```
+
+
+## Q4: Which team is more likely to win an overtime game during the regular season (home or away)?
+Men: Home team won overtime games 56.17% of the time.
+```{r}
+m_homewins <- MRegularSeasonDetailedResults %>% filter(NumOT > 0, WLoc == "H") %>% summarize(homecount = n())
+m_homewins
+m_awaywins <- MRegularSeasonDetailedResults %>% filter(NumOT > 0, WLoc == "A") %>% summarize(awaycount = n())
+m_awaywins
+
+m_homewins / (m_homewins + m_awaywins)
+```
+Women: Home team won overtime games 53.98% of the time.
+```{r}
+w_homewins <- WRegularSeasonDetailedResults %>% filter(NumOT > 0, WLoc == "H") %>% summarize(homecount = n())
+w_homewins
+w_awaywins <- WRegularSeasonDetailedResults %>% filter(NumOT > 0, WLoc == "A") %>% summarize(awaycount = n())
+w_awaywins
+
+w_homewins / (w_homewins + w_awaywins)
+```
+
+
+## Q5: What is the lowest seed to have won the championship game? What about getting to the Final Four?
+Men: The lowest seed to have won the championship in the provided years is Connecticut in 2014 as a 7 seed. The lowest seeds to have made it to the final four are George Mason in 2006, VCU in 2011, Loyola-Chicago in 2018, and UCLA in 2021, all 11 seeds.
+```{r}
+# won champsionship
+m_championshipgames <- MNCAATourneyDetailedResults %>% arrange(-DayNum) %>% filter(DayNum == 154) %>% select(Season, WTeamID) %>% left_join(MNCAATourneySeeds, by = c("Season" = "Season", "WTeamID" = "TeamID")) %>% left_join(MTeams, by = c("WTeamID" = "TeamID")) %>% select(Season, WTeamID, Seed, TeamName)
+m_championshipgames
+
+# made it to final four
+m_finalfourW <- MNCAATourneyDetailedResults %>% arrange(-DayNum) %>% select(Season, WTeamID, DayNum) %>% filter(DayNum == 152) %>% left_join(MNCAATourneySeeds, by = c("Season" = "Season", "WTeamID" = "TeamID")) %>% left_join(MTeams, by = c("WTeamID" = "TeamID")) %>% select(Season, WTeamID, Seed, TeamName) %>% rename("TeamID" = "WTeamID")
+m_finalfourL <- MNCAATourneyDetailedResults %>% arrange(-DayNum) %>% select(Season, LTeamID, DayNum) %>% filter(DayNum == 152) %>% left_join(MNCAATourneySeeds, by = c("Season" = "Season", "LTeamID" = "TeamID")) %>% left_join(MTeams, by = c("LTeamID" = "TeamID")) %>% select(Season, LTeamID, Seed, TeamName) %>% rename("TeamID" = "LTeamID")
+
+m_allfinal4 <- rbind(m_finalfourW, m_finalfourL) %>% arrange(Season)
+m_allfinal4
+```
+Women: The lowest seed to have won the championship in the provided years is Texas A&M in 2011 as a 2 seed. All other championships have been won by a 1 seed. The lowest seed to have made it to the final four is Washington in 2016 as a 7 seed.
+```{r}
+# championship game was day155 for 2010-2016, but day153 for 2017-2022
+w_championshipgames1 <- WNCAATourneyDetailedResults %>% arrange(-DayNum) %>% select(Season, WTeamID, DayNum) %>% filter(DayNum == 155) %>% left_join(WNCAATourneySeeds, by = c("Season" = "Season", "WTeamID" = "TeamID")) %>% left_join(WTeams, by = c("WTeamID" = "TeamID")) %>% select(Season, WTeamID, Seed, TeamName) 
+w_championshipgames2 <- WNCAATourneyDetailedResults %>% arrange(-DayNum) %>% select(Season, WTeamID, DayNum) %>% filter(Season %in% c(2017:2022), DayNum == 153) %>% left_join(WNCAATourneySeeds, by = c("Season" = "Season", "WTeamID" = "TeamID")) %>% left_join(WTeams, by = c("WTeamID" = "TeamID")) %>% select(Season, WTeamID, Seed, TeamName) 
+w_championshipgames <- rbind(w_championshipgames1, w_championshipgames2) %>% arrange(Season)
+w_championshipgames
+
+# made it to final four
+# final four was day 153 for 2010-2016
+w_finalfourW1 <- WNCAATourneyDetailedResults %>% arrange(-DayNum) %>% select(Season, WTeamID, DayNum) %>% filter(Season <= 2016, DayNum == 153) %>% left_join(WNCAATourneySeeds, by = c("Season" = "Season", "WTeamID" = "TeamID")) %>% left_join(WTeams, by = c("WTeamID" = "TeamID")) %>% select(Season, WTeamID, Seed, TeamName) %>% rename("TeamID" = "WTeamID")
+
+w_finalfourL1 <- WNCAATourneyDetailedResults %>% arrange(-DayNum) %>% select(Season, LTeamID, DayNum) %>% filter(Season <= 2016, DayNum == 153) %>% left_join(WNCAATourneySeeds, by = c("Season" = "Season", "LTeamID" = "TeamID")) %>% left_join(WTeams, by = c("LTeamID" = "TeamID")) %>% select(Season, LTeamID, Seed, TeamName) %>% rename("TeamID" = "LTeamID")
+# 2010-2016
+w_allfinal41 <- rbind(w_finalfourW1, w_finalfourL1) %>% arrange(Season)
+
+# final four was day151 for 2017-2022
+w_finalfourW2 <- WNCAATourneyDetailedResults %>% arrange(-DayNum) %>% select(Season, WTeamID, DayNum) %>% filter(Season > 2016, DayNum == 151) %>% left_join(WNCAATourneySeeds, by = c("Season" = "Season", "WTeamID" = "TeamID")) %>% left_join(WTeams, by = c("WTeamID" = "TeamID")) %>% select(Season, WTeamID, Seed, TeamName) %>% rename("TeamID" = "WTeamID")
+
+w_finalfourL2 <- WNCAATourneyDetailedResults %>% arrange(-DayNum) %>% select(Season, LTeamID, DayNum) %>% filter(Season > 2016, DayNum == 151) %>% left_join(WNCAATourneySeeds, by = c("Season" = "Season", "LTeamID" = "TeamID")) %>% left_join(WTeams, by = c("LTeamID" = "TeamID")) %>% select(Season, LTeamID, Seed, TeamName) %>% rename("TeamID" = "LTeamID")
+# 2017-2022
+w_allfinal42 <-  rbind(w_finalfourW2, w_finalfourL2) %>% arrange(Season)
+
+# all final four teams
+w_allfinal4 <- rbind(w_allfinal41, w_allfinal42) %>% arrange(Season)
+w_allfinal4
+```
+
+
+## Chip's Question: Compare freethrow percentages between years. Has the average freethrow percentage increased, decreased, or stayed about the same?
+
+Men:
+```{r}
+# added winning team ft made to losing team ft made. divided by winning and losing attempted ft sum to get overall ft percentage for each game. 
+game_ft_perct <- MRegularSeasonDetailedResults %>% select(Season, WFTM, WFTA, LFTM, LFTA) %>% mutate(ft_perct = (WFTM + LFTM) / (WFTA + LFTA))
+game_ft_perct %>% head()
+
+season_avg <- game_ft_perct %>% group_by(Season) %>% summarize(avg_ft_perct_year = mean(ft_perct))
+season_avg
+season_avg %>% ggplot(aes(x = Season, y = avg_ft_perct_year)) + geom_line()
+
+# so ft percentage did increase, but only by 2%
+```
+
+Women:
+```{r}
+game_ft_perct <- WRegularSeasonDetailedResults %>% select(Season, WFTM, WFTA, LFTM, LFTA) %>% mutate(ft_perct = (WFTM + LFTM) / (WFTA + LFTA))
+game_ft_perct %>% head()
+
+season_avg <- game_ft_perct %>% group_by(Season) %>% summarize(avg_ft_perct_year = mean(ft_perct))
+season_avg
+season_avg %>% ggplot(aes(x = Season, y = avg_ft_perct_year)) + geom_line()
+```
+
